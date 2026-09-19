@@ -1,6 +1,6 @@
 # dose
 
-Evidence collection calendar generator for compliance programs.
+Evidence deadlines that fall on weekends and holidays move to the nearest prior working day. Reminders come built in — one month out, one week out.
 
 ```bash
 go get github.com/Formulary-Labs/dose
@@ -8,9 +8,7 @@ go get github.com/Formulary-Labs/dose
 
 ## What it does
 
-`dose` converts a list of evidence collection events into an RFC 5545 iCalendar file (`.ics`) and a Markdown table. It schedules each event on a working day by shifting due dates that fall on weekends or US federal holidays to the nearest prior working day. Each event also produces two reminder events — one month and one week in advance.
-
-The result is a calendar file you can import directly into Google Calendar, Outlook, or Apple Calendar, and a Markdown table you can include in a program status document.
+`dose` converts a list of evidence collection events into an RFC 5545 iCalendar file (`.ics`) and a Markdown table. It schedules each event on a working day by shifting due dates that fall on weekends or US federal holidays to the nearest prior working day. Each event also produces two reminder entries. The result imports directly into Google Calendar, Outlook, or Apple Calendar.
 
 ## Usage
 
