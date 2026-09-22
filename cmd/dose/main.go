@@ -24,13 +24,16 @@ const version = "0.1.0"
 
 func main() {
 	var (
-		eventsFlag  = flag.String("events", "", "Path to JSON events file [{id, title, due_date, owner, ...}]")
-		programFlag = flag.String("program", "", "Program slug for provenance logging")
-		fmtFlag     = flag.String("format", "ics", "Output format: ics (default), md, both")
-		outputFlag  = flag.String("output", "", "Output file path (stdout if empty, or base path for --format both)")
-		timezoneFlag = flag.String("timezone", "America/New_York", "IANA timezone")
-		yearFlag    = flag.Int("year", time.Now().Year(), "Reference year for holiday calculation")
-		versionFlag = flag.Bool("version", false, "Print version and exit")
+		eventsFlag    = flag.String("events", "", "Path to JSON events file [{id, title, due_date, owner, ...}]")
+		programFlag   = flag.String("program", "", "Program slug for provenance logging")
+		fmtFlag       = flag.String("format", "ics", "Output format: ics (default), md, both")
+		outputFlag    = flag.String("output", "", "Output file path (stdout if empty, or base path for --format both)")
+		timezoneFlag  = flag.String("timezone", "America/New_York", "IANA timezone")
+		yearFlag      = flag.Int("year", time.Now().Year(), "Reference year for holiday calculation")
+		workStartFlag = flag.String("work-start", "09:00", "Work day start HH:MM (default 09:00)")
+		workEndFlag   = flag.String("work-end", "17:00", "Work day end HH:MM (default 17:00)")
+		gapFlag       = flag.Int("gap-minutes", 0, "Minimum gap in minutes between scheduled events (0 = none)")
+		versionFlag   = flag.Bool("version", false, "Print version and exit")
 	)
 	flag.Usage = usage
 	flag.Parse()
@@ -59,8 +62,11 @@ func main() {
 	}
 
 	opts := calendar.Options{
-		Timezone: *timezoneFlag,
-		Year:     *yearFlag,
+		Timezone:   *timezoneFlag,
+		Year:       *yearFlag,
+		WorkStart:  *workStartFlag,
+		WorkEnd:    *workEndFlag,
+		GapMinutes: *gapFlag,
 	}
 
 	ics, md := calendar.Generate(events, opts)
@@ -100,7 +106,7 @@ func writeOutput(content, path string) {
 		fmt.Print(content)
 		return
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "error writing output: %v\n", err)
 		os.Exit(exit.ToolError)
 	}

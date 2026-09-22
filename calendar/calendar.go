@@ -23,10 +23,11 @@ type Event struct {
 
 // Options configures calendar generation.
 type Options struct {
-	Timezone  string // IANA timezone, default: America/New_York
-	WorkStart string // HH:MM, default: 09:00
-	WorkEnd   string // HH:MM, default: 17:00
-	Year      int    // Reference year for holiday calculation
+	Timezone   string // IANA timezone, default: America/New_York
+	WorkStart  string // HH:MM, default: 09:00
+	WorkEnd    string // HH:MM, default: 17:00
+	GapMinutes int    // Minimum gap in minutes between scheduled events (0 = none)
+	Year       int    // Reference year for holiday calculation
 }
 
 func (o *Options) defaults() {
@@ -72,15 +73,15 @@ func Generate(events []Event, opts Options) (ics string, md string) {
 		// Shift due date to a working day.
 		scheduled := shiftLeft(e.DueDate, holidays)
 
-		// Reminder events: 1 month and 1 week before.
+		// Reminder offsets: 1 month and 1 week before.
 		oneMonth := shiftLeft(scheduled.AddDate(0, -1, 0), holidays)
 		oneWeek := shiftLeft(scheduled.Add(-7*24*time.Hour), holidays)
 
-		// Main event.
-		icsEvents = append(icsEvents, icsEvent(e.ID, e.Title, e.Description, scheduled, opts.Timezone, ""))
-		// Reminders.
-		icsEvents = append(icsEvents, icsEvent(e.ID+"-prep-month", "PREP: "+e.Title, "1-month preparation reminder", oneMonth, opts.Timezone, "REMINDER"))
-		icsEvents = append(icsEvents, icsEvent(e.ID+"-prep-week", "PREP: "+e.Title, "1-week preparation reminder", oneWeek, opts.Timezone, "REMINDER"))
+		// Main event with embedded VALARMs (RFC 5545 §3.6.6).
+		icsEvents = append(icsEvents, icsEvent(e, scheduled, []alarmSpec{
+			{trigger: scheduled.Sub(oneMonth) * -1, description: "1-month preparation reminder: " + e.Title},
+			{trigger: scheduled.Sub(oneWeek) * -1, description: "1-week preparation reminder: " + e.Title},
+		}))
 
 		mdLines = append(mdLines, fmt.Sprintf("| %s | %s | %s | %s | %s |",
 			scheduled.Format("2006-01-02"), e.Title, e.Owner, e.ControlID, e.Priority))
@@ -96,23 +97,70 @@ func Generate(events []Event, opts Options) (ics string, md string) {
 	return ics_b.String(), strings.Join(mdLines, "\n") + "\n"
 }
 
-// icsEvent produces a single VEVENT block.
-func icsEvent(uid, summary, description string, date time.Time, tz, category string) string {
+// alarmSpec describes a VALARM trigger relative to the event's DTSTART.
+// duration is negative (e.g. -168h = 1 week before).
+type alarmSpec struct {
+	trigger     time.Duration // negative = before event
+	description string
+}
+
+// icsEvent produces a single VEVENT block with embedded VALARMs.
+// All-day events use DATE value type and do not carry TZID.
+func icsEvent(e Event, date time.Time, alarms []alarmSpec) string {
 	var b strings.Builder
 	b.WriteString("BEGIN:VEVENT\r\n")
-	b.WriteString(fmt.Sprintf("UID:%s@formulary-labs\r\n", uid))
-	b.WriteString(fmt.Sprintf("DTSTART;VALUE=DATE:%s\r\n", date.Format("20060102")))
-	b.WriteString(fmt.Sprintf("DTEND;VALUE=DATE:%s\r\n", date.AddDate(0, 0, 1).Format("20060102")))
-	b.WriteString(fmt.Sprintf("SUMMARY:%s\r\n", foldLine(summary)))
-	if description != "" {
-		b.WriteString(fmt.Sprintf("DESCRIPTION:%s\r\n", foldLine(description)))
+	fmt.Fprintf(&b, "UID:%s@formulary-labs\r\n", e.ID)
+	fmt.Fprintf(&b, "DTSTART;VALUE=DATE:%s\r\n", date.Format("20060102"))
+	fmt.Fprintf(&b, "DTEND;VALUE=DATE:%s\r\n", date.AddDate(0, 0, 1).Format("20060102"))
+	fmt.Fprintf(&b, "SUMMARY:%s\r\n", foldLine(icsEscape(e.Title)))
+	if e.Description != "" {
+		fmt.Fprintf(&b, "DESCRIPTION:%s\r\n", foldLine(icsEscape(e.Description)))
 	}
-	if category != "" {
-		b.WriteString(fmt.Sprintf("CATEGORIES:%s\r\n", category))
+	if e.Category != "" {
+		fmt.Fprintf(&b, "CATEGORIES:%s\r\n", icsEscape(e.Category))
 	}
-	b.WriteString(fmt.Sprintf("TZID:%s\r\n", tz))
+	// Embed VALARM subcomponents for reminders.
+	for _, a := range alarms {
+		b.WriteString("BEGIN:VALARM\r\n")
+		b.WriteString("ACTION:DISPLAY\r\n")
+		fmt.Fprintf(&b, "DESCRIPTION:%s\r\n", foldLine(icsEscape(a.description)))
+		// Trigger as negative duration relative to DTSTART.
+		fmt.Fprintf(&b, "TRIGGER:%s\r\n", formatDuration(a.trigger))
+		b.WriteString("END:VALARM\r\n")
+	}
 	b.WriteString("END:VEVENT\r\n")
 	return b.String()
+}
+
+// formatDuration formats a time.Duration as an RFC 5545 DURATION value.
+// Only days and hours are used; sub-day precision is rounded.
+func formatDuration(d time.Duration) string {
+	if d == 0 {
+		return "PT0S"
+	}
+	neg := ""
+	if d < 0 {
+		neg = "-"
+		d = -d
+	}
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	if days > 0 && hours == 0 {
+		return fmt.Sprintf("%sP%dD", neg, days)
+	}
+	if days > 0 {
+		return fmt.Sprintf("%sP%dDT%dH", neg, days, hours)
+	}
+	return fmt.Sprintf("%sPT%dH", neg, int(d.Hours()))
+}
+
+// icsEscape escapes special characters in iCalendar text values.
+func icsEscape(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, ";", `\;`)
+	s = strings.ReplaceAll(s, ",", `\,`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	return s
 }
 
 // foldLine wraps long iCalendar property values per RFC 5545 (75 octet limit).

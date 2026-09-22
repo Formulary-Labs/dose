@@ -95,9 +95,17 @@ func TestReminderEventsPresent(t *testing.T) {
 		},
 	}
 	ics, _ := calendar.Generate(events, calendar.Options{Year: 2026})
-	// Expect main event + 2 reminder events = 3 VEVENTs.
-	count := strings.Count(ics, "BEGIN:VEVENT")
-	if count != 3 {
-		t.Errorf("expected 3 VEVENT blocks (1 main + 2 reminders), got %d", count)
+	// Reminders are now VALARM subcomponents — expect 1 VEVENT and 2 VALARMs.
+	veventCount := strings.Count(ics, "BEGIN:VEVENT")
+	if veventCount != 1 {
+		t.Errorf("expected 1 VEVENT block, got %d", veventCount)
+	}
+	valarmCount := strings.Count(ics, "BEGIN:VALARM")
+	if valarmCount != 2 {
+		t.Errorf("expected 2 VALARM subcomponents, got %d", valarmCount)
+	}
+	// TZID must not appear as a standalone property (RFC 5545 violation).
+	if strings.Contains(ics, "\r\nTZID:") {
+		t.Error("TZID must not appear as a standalone VEVENT property")
 	}
 }
