@@ -6,6 +6,15 @@ Evidence deadlines that fall on weekends and holidays move to the nearest prior 
 go get github.com/Formulary-Labs/dose
 ```
 
+## In the ecosystem
+
+Formulary is a **pick-and-choose** suite of small, single-purpose CLIs. Install only the tools your workflow needs; each runs standalone. Shared contracts live in [`substrate`](https://github.com/Formulary-Labs/substrate). Optional Make pipelines (or an agent such as `regimen`) compose tools into a run — plug-and-play, not all-or-nothing.
+
+**This tool:** evidence collection calendar (`.ics`) with shift-left scheduling.  
+**Works with:** `spectrometer` (due watch), `exhibit` (renders calendar section).  
+**Pipeline stage:** monitor.
+
+
 ## What it does
 
 `dose` converts a list of evidence collection events into an RFC 5545 iCalendar file (`.ics`) and a Markdown table. It schedules each event on a working day by shifting due dates that fall on weekends or US federal holidays to the nearest prior working day. Each event also produces two reminder entries. The result imports directly into Google Calendar, Outlook, or Apple Calendar.
@@ -42,6 +51,22 @@ ics, md, err := calendar.Generate([]calendar.Event{
 ```
 
 `Options` defaults: `America/New_York`, `09:00`–`17:00`, current year.
+
+### CLI
+
+```bash
+dose --events events.json --format both --output evidence-calendar
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--events` | — | JSON events file `[{id, title, due_date, owner, ...}]` |
+| `--format` | `ics` | `ics`, `md`, or `both` (writes `<output>.ics` and `<output>.md`) |
+| `--output` | stdout | Output file path (base path when `--format both`) |
+| `--timezone` | `America/New_York` | IANA timezone for scheduling |
+| `--year` | current | Reference year for holiday calculation |
+| `--work-start` / `--work-end` | `09:00` / `17:00` | Work-day window (HH:MM) |
+| `--gap-minutes` | `0` | Minimum gap between scheduled events |
 
 ## Shift-left scheduling
 
